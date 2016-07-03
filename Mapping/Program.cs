@@ -1074,7 +1074,6 @@ namespace Mapping
         {
             string[] colLetter = Enumerable.Range('A', 'Z' - 'A' + 1).Select(i => ((Char)i).ToString()).ToArray();//GENERATE ALPHABET
             string directoryXLS = "", directoryUPD = "", directoryNEW = "", directoryLOG = "", directoryLOGUPD = "", dataFile = ""; //explorer directory addresses
-            string[] directories = new string[4];
             string[] diagFiles = null, logFiles = null;
             string[] pointsFrom = null;//all original points
             string[] pointsTo = null;//all new points
@@ -1138,23 +1137,13 @@ namespace Mapping
             data.Close(SaveChanges: false, Filename: directoryXLS);
             app.Quit();
             Console.WriteLine("End of Excel data acquisition");
-            ///end of data acquisition
-            ///
-            /// 
-            /// 
-            ///start procesign
+            //end of data acquisition
+            //start procesign
             //get data directories check if they exist,create if not
             directoryNEW = directoryXLS.Substring(0, directoryXLS.LastIndexOf("\\")) + "\\HMI_NEW\\"; //input file directory
-            directories[0] = directoryNEW;
             directoryUPD = directoryNEW.Replace("HMI_NEW", "HMI_UPDATE");//modified diagram directory
-            directories[1] = directoryUPD;
             directoryLOG = directoryNEW.Replace("HMI_NEW", "LOG");//modified diagram directory
-            directories[2] = directoryLOG;
             directoryLOGUPD = directoryNEW.Replace("HMI_NEW", "LOG_UPDATE");//modified diagram directory
-            directories[3] = directoryLOGUPD;
-            foreach(string directory in directories)
-                if (!Directory.Exists(directory))
-                    Directory.CreateDirectory(directory);
             //get lists of files
             diagFiles = Directory.GetFiles(directoryNEW, "*.src", SearchOption.AllDirectories);
             logFiles = Directory.GetFiles(directoryLOG, "*.src", SearchOption.AllDirectories);
@@ -1162,28 +1151,9 @@ namespace Mapping
             //loop through all graphic diagrams and log files
             foreach (string logFile in logFiles)
             {
-                ////outpu
-                //if (fromLines.Count > 0)
-                //{
-                //    Console.WriteLine("FROM");
-                //    while (fromLines.Count > 0)
-                //    {
-                //        Console.WriteLine((string)fromLines.Dequeue());
-                //        modifications++;
-                //    }
-                //    Console.WriteLine(tempFile);
-                //}
-                //if (logLines.Count > 0)
-                //{
-                //    Console.WriteLine("LOADED");
 
-                //    while (logLines.Count > 0)
-                //    {
-                //        if ((string)logLines.Peek() == "#from:")
-                //            Console.WriteLine((string)logLines.Dequeue());
-                //    }
-                //}
-                //clear all flags
+                Console.WriteLine(logFile);
+                //clear all data
                 readTo = false;
                 readFrom = false;
                 chngLog = false;
@@ -1193,33 +1163,50 @@ namespace Mapping
                 linesLog.Clear();
                 dataTo = null;
                 dataFrom = null;
-                dataFile = "";
                 dataFile = logFile.Replace("LOG", "HMI_NEW");//working graphic diagram file
+                //if graphic diagram does not exist, get the next one
 
-                if (!File.Exists(dataFile))//if graphic diagram does not exist, get the next one
+                if (!File.Exists(dataFile))
                     continue;
+                
+                directoryUPD = dataFile.Replace("\\HMI_NEW\\", "\\HMI_UPDATE\\");
+                //if update file already exists delete it, if directory does not exists create it
+                if (File.Exists(directoryUPD))
+                    File.Delete(directoryUPD);
+                if (!Directory.Exists(directoryUPD.Substring(0, directoryUPD.LastIndexOf("\\"))))
+                    Directory.CreateDirectory(directoryUPD.Substring(0, directoryUPD.LastIndexOf("\\")));
+
+                directoryLOGUPD = dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\");
+                //if log update file already exists delete it, if directory does not exists create it
+                if (File.Exists(directoryLOGUPD))
+                    File.Delete(directoryLOGUPD);
+                if (!Directory.Exists(directoryLOGUPD.Substring(0, directoryLOGUPD.LastIndexOf("\\"))))
+                    Directory.CreateDirectory(directoryLOGUPD.Substring(0, directoryLOGUPD.LastIndexOf("\\")));
                 //read all logged data and check if update points are used
                 foreach (string line in File.ReadLines(@logFile, Encoding.GetEncoding(1252)))
-                    if (line.Contains('"'))
-                        for (int l2 = 0; l2 < pointsFrom.Length; l2++)
-                            if (line.Contains(pointsFrom[l2]))
+                {
+                    if (line.Contains("\"4"))
+                        foreach (string point in pointsFrom)
+                            if (line.Contains(point))
                                 readTo = true;
+                    //store all log file lines for later
+                    linesLog.Enqueue(line);
+                }
+                //if update points are actually found, process the file
                 if (readTo == true)
                 {
+                    Console.WriteLine(dataFile);
                     readTo = false;
-                    foreach (string line in File.ReadLines(@logFile, Encoding.GetEncoding(1252)))
-                        linesLog.Enqueue(line);
-
                     //process graphic diagrams
                     foreach (string line in File.ReadLines(@dataFile, Encoding.GetEncoding(1252)))
                     {
                         actLine = line;
                         //copy logged data for replacement one set at a time
-                        if (linesFrom.Count == 0)
+                        if (linesToOld.Count == 0)
                         {
                             procReplace = false;
-                            while (linesLog.Count > 0)
                             {
+                                Console.WriteLine(linesLogUPD.Count);
                                 //sort all logged data
                                 tempLine = (string)linesLog.Dequeue();
                                 if (tempLine.Length != 0 || (!readFrom && !readTo))
@@ -1256,7 +1243,7 @@ namespace Mapping
                                 {
                                     if (linesFrom.Count > 0)
                                     {//replace all relevant points and make them IDs, not text
-                                        for (int lp1 = 0; lp1 < modifications; lp1++)
+                                        for (int lp1=0;lp1<modifications;lp1++)
                                         {
                                             tempLine1 = tempQueue[lp1];
                                             if (chngLog)
@@ -1272,7 +1259,6 @@ namespace Mapping
                                                 if (tempLine1.StartsWith("Macro") || tempLine1.StartsWith("MACRO"))
                                                 {
                                                     tempLine1 = tempLine1.Replace("STATIC", "MINI");
-                                                    dataTo = tempLine1.Split(' ');
                                                     linesToOld.Enqueue(tempQueue[lp1]);
                                                     tempLine1 = tempLine1.Replace(
                                                         dataTo[6] + " " + dataTo[7] + " " + dataTo[8] + " " + dataTo[9] + " " + dataTo[10] + " " + dataTo[11],
@@ -1280,7 +1266,13 @@ namespace Mapping
                                                     linesToNew.Enqueue(tempLine1);
                                                 }
                                             }
+                                            else
+                                            {
+                                                linesToOld.Enqueue(tempLine1);
+                                                linesToNew.Enqueue(tempLine1);
+                                            }
                                             modifications = 0;
+                                            dataTo = tempLine1.Split(' ');
                                             linesLogUPD.Enqueue(tempLine1);
                                         }
                                         linesLogUPD.Enqueue(tempLine);
@@ -1304,29 +1296,19 @@ namespace Mapping
                                 procReplace = true;
                                 linesFrom.Dequeue();
                                 actLine = (string)linesToNew.Dequeue();
-                                }
-
-                            if (!Directory.Exists(dataFile.Replace("\\HMI_NEW\\", "\\HMI_UPDATE\\").Substring(0, dataFile.Replace("\\HMI_NEW\\", "\\HMI_UPDATE\\").LastIndexOf("\\"))))
-                                Directory.CreateDirectory(dataFile.Replace("\\LHMI_NEW\\", "\\HMI_UPDATE\\").Substring(0, dataFile.Replace("\\HMI_NEW\\", "\\HMI_UPDATE\\").LastIndexOf("\\")));
-                            File.AppendAllText(dataFile.Replace("\\HMI_NEW\\", "\\HMI_UPDATE\\"), actLine + "\r\n", Encoding.GetEncoding(1252));
+                                linesToOld.Dequeue();
+                            }
+                          File.AppendAllText(directoryUPD, actLine + "\r\n", Encoding.GetEncoding(1252));
                         }
                     catch { }
 
                     }
+
+                    // Console.WriteLine(dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\"));
+                    while (linesLogUPD.Count > 0)
+                        File.AppendAllText(directoryLOGUPD, linesLogUPD.Dequeue() + "\r\n", Encoding.GetEncoding(1252));
                 }
-                if (!Directory.Exists(dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\").Substring(0, dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\").LastIndexOf("\\"))))
-                    Directory.CreateDirectory(dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\").Substring(0, dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\").LastIndexOf("\\")));
-                if (File.Exists(dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\")))
-                    File.Delete(dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\"));
-                // Console.WriteLine(dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\"));
-                while (linesLogUPD.Count > 0)
-                    File.AppendAllText(dataFile.Replace("\\HMI_NEW\\", "\\LOG_UPDATE\\"), linesLogUPD.Dequeue() + "\r\n", Encoding.GetEncoding(1252));
-                Console.WriteLine(dataFile);
             }
-            //DO NOT COPY FILES
-            //else
-            //copy file if it was not previously processed
-            //File.Copy(file, file.Replace("\\HMI_NEW\\", "\\HMI_RETURN\\"));
         }
     }
 }
