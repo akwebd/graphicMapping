@@ -921,7 +921,7 @@ namespace Mapping
 
         static void rewind(string directory)
         {
-            string directoryLOG = "", directorySRC_R = "", directoryNEW = ""; //explorer directory addresses
+            string directoryLOG = "", directorySRC_R = "", directoryNEW = "", directoryLOG_E=""; //explorer directory addresses
             string[] logFiles = null;//log file adrresses
             string[] diagFiles = null;//.SRC file adrresses
             Queue fromLines = new Queue();
@@ -937,9 +937,11 @@ namespace Mapping
             directoryNEW = directory;
             directoryLOG = directory.Replace("HMI_NEW", "LOG");
             directorySRC_R = directory.Replace("HMI_NEW", "HMI_RETURN");
+            directoryLOG_E = directory.Replace("HMI_NEW", "LOG_E");
 
             //clear destination directory
-
+            if (!Directory.Exists(directoryLOG_E))
+                Directory.CreateDirectory(directoryLOG_E);
             if (!Directory.Exists(directorySRC_R))
                 Directory.CreateDirectory(directorySRC_R);
             else
@@ -960,22 +962,29 @@ namespace Mapping
             {
                 if (fromLines.Count > 0)
                 {
+                    //create subfolders
+                    directoryLOG_E = tempFile.Replace("HMI_RETURN", "LOG_E");
+                    if (!Directory.Exists(directoryLOG_E.Substring(0, directoryLOG_E.LastIndexOf('\\'))))
+                        Directory.CreateDirectory(directoryLOG_E.Substring(0, directoryLOG_E.LastIndexOf('\\')));
                     Console.WriteLine("FROM");
                     while (fromLines.Count > 0)
                     {
-                        
-                        Console.WriteLine((string)fromLines.Dequeue());
+                        File.AppendAllText(directoryLOG_E, (string)fromLines.Dequeue() + "\r\n", Encoding.GetEncoding(1252));
                         modifications++;
                     }
                     Console.WriteLine(tempFile);
                 }
                 if (logLines.Count > 0)
                 {
+                    //create subfolders
+                    directoryLOG_E = tempFile.Replace("HMI_RETURN", "LOG_E");
+                    if (!Directory.Exists(directoryLOG_E.Substring(0, directoryLOG_E.LastIndexOf('\\'))))
+                        Directory.CreateDirectory(directoryLOG_E.Substring(0, directoryLOG_E.LastIndexOf('\\')));
                     Console.WriteLine("LOADED");
 
                     while (logLines.Count > 0)
-                    {                        
-                        Console.WriteLine((string)logLines.Dequeue());                        
+                    {
+                        File.AppendAllText(directoryLOG_E, (string)logLines.Dequeue() + "\r\n", Encoding.GetEncoding(1252));
                     }
                 }
                 to = false;
@@ -1001,65 +1010,63 @@ namespace Mapping
                     foreach (string line in File.ReadLines(@file, Encoding.GetEncoding(1252)))
                     {
                         line1 = line;
-                            //copy data to replace
-                            if (fromLines.Count == 0)
+                        //copy data to replace
+                        if (fromLines.Count == 0)
+                        {
+                            repl = false;
+                            while (logLines.Count > 0)
                             {
-                                repl = false;
-                                while (logLines.Count > 0)
+                                // get line by line
+                                tempLine = (string)logLines.Dequeue();
+                                if (tempLine.Length != 0 || (!from && !to))
                                 {
-                                    // get line by line
-                                    tempLine = (string)logLines.Dequeue();
-                                    if (tempLine.Length != 0 || (!from && !to))
+                                    if (tempLine.StartsWith("Macro") || tempLine.StartsWith("MACRO"))//get macro parameters X Y W H
+                                        fromData =tempLine.Split(' ');
+
+                                    if (from)
+                                        fromLines.Enqueue(tempLine);
+
+                                    if (!from && to && tempLine == "#to:")
                                     {
-                                        if (tempLine.StartsWith("Macro") || tempLine.StartsWith("MACRO"))//get macro parameters X Y W H
-                                            fromData=tempLine.Split(' ');
-
-                                        if (from)
-                                            fromLines.Enqueue(tempLine);
-
-                                        if (!from && to && tempLine == "#to:")
-                                        {
-                                            from = true;
-                                            to = false;
-                                        }
-
-                                        if (to)
-                                            toLines.Enqueue(tempLine);
-
-                                        if (!to && tempLine == "#from:")
-                                            to = true;
+                                        from = true;
+                                        to = false;
                                     }
-                                    else
-                                        if (fromLines.Count > 0)
-                                        {
-                                            from = false;
-                                            break;
-                                        }
 
+                                    if (to)
+                                        toLines.Enqueue(tempLine);
+
+                                    if (!to && tempLine == "#from:")
+                                        to = true;
+                                }
+                                else
+                                if (fromLines.Count > 0)
+                                {
+                                    from = false;
+                                    break;
                                 }
                             }
-                            try
+                        }
+                        try
+                        {
+                            toData = null;
+                            toData = line1.Split(' ');
+                            if (toData[0].StartsWith("*") && line1 == (string)fromLines.Peek())//for commented line replacement
                             {
-                                toData=null;
-                                toData = line1.Split(' ');
-                                if (toData[0].StartsWith("*") && line1 == (string)fromLines.Peek())//for commented line replacement
-                                    {
-                                        fromLines.Dequeue();
-                                        line1 = (string)toLines.Dequeue();
-                                    }
-                                else
-                                    if(fromData.Length>5)
-                                        if (repl || (fromData[2] == toData[2] && fromData[3] == toData[3] && fromData[4] == toData[4] && fromData[5] == toData[5]))//for macro replacemen
-                                        {
-                                            repl = true;
-                                            fromLines.Dequeue();
-                                            line1 = (string)toLines.Dequeue();
-                                        }
-
+                                fromLines.Dequeue();
+                                line1 = (string)toLines.Dequeue();
                             }
-                            catch { }
-                            tempFile = file.Replace("\\HMI_NEW\\", "\\HMI_RETURN\\");
-                            File.AppendAllText(tempFile, line1 + "\r\n", Encoding.GetEncoding(1252));
+                            else
+                            if (fromData.Length > 5)
+                                if (repl || fromData[2] == toData[2] && fromData[3] == toData[3] && fromData[4] == toData[4] && fromData[5] == toData[5])//for macro replacement
+                                {
+                                    repl = true;
+                                    fromLines.Dequeue();
+                                    line1 = (string)toLines.Dequeue();
+                                }
+                        }
+                        catch { }
+                        tempFile = file.Replace("\\HMI_NEW\\", "\\HMI_RETURN\\");
+                        File.AppendAllText(tempFile, line1 + "\r\n", Encoding.GetEncoding(1252));
                     }
                 }
                 //DO NOT COPY FILES
