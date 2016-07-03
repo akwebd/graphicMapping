@@ -975,7 +975,6 @@ namespace Mapping
 
                     while (logLines.Count > 0)
                     {                        
-                        if((string)logLines.Peek()=="#from:")
                         Console.WriteLine((string)logLines.Dequeue());                        
                     }
                 }
